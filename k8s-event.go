@@ -1,10 +1,11 @@
 package main
 
-/* Sode code samples taken from https://github.com/heptiolabs/eventrouter */
+/* Some code samples taken from https://github.com/heptiolabs/eventrouter */
 
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -35,6 +36,12 @@ type EventRouter struct {
 	eListerSynched cache.InformerSynced
 }
 
+type EventData struct {
+	Verb     string    `json:"verb"`
+	Event    *v1.Event `json:"event"`
+	OldEvent *v1.Event `json:"old_event,omitempty"`
+}
+
 // setup a signal hander to gracefully exit
 func sigHandler() <-chan struct{} {
 	stop := make(chan struct{})
@@ -54,17 +61,44 @@ func sigHandler() <-chan struct{} {
 	return stop
 }
 
+func NewEventData(eNew *v1.Event, eOld *v1.Event) EventData {
+	var eData EventData
+	if eOld == nil {
+		eData = EventData{
+			Verb:  "ADDED",
+			Event: eNew,
+		}
+	} else {
+		eData = EventData{
+			Verb:     "UPDATED",
+			Event:    eNew,
+			OldEvent: eOld,
+		}
+	}
+
+	return eData
+}
+
+// UpdateEvents implements the EventSinkInterface
+func UpdateEvents(eNew *v1.Event, eOld *v1.Event) {
+	eData := NewEventData(eNew, eOld)
+	log.Printf("%s - %s - %s - %s", eData.Event.Reason, eData.Event.InvolvedObject.Namespace, eData.Event.InvolvedObject.Name, eData.Event.Message)
+	if eData.Event.Related != nil {
+		log.Printf("%s - %s", eData.Event.Related.Namespace, eData.Event.Related.Name)
+	}
+}
+
 // addEvent is called when an event is created, or during the initial list
 func addEvent(obj interface{}) {
 	e := obj.(*v1.Event)
-	glog.Info(e)
+	UpdateEvents(e, nil)
 }
 
 // updateEvent is called any time there is an update to an existing event
 func updateEvent(objOld interface{}, objNew interface{}) {
 	eOld := objOld.(*v1.Event)
 	eNew := objNew.(*v1.Event)
-	glog.Info(eOld, eNew)
+	UpdateEvents(eNew, eOld)
 }
 
 // deleteEvent should only occur when the system garbage collects events via TTL expiration
