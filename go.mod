@@ -1,10 +1,11 @@
-module github.com/6RiverSystems/k8s-event
+module github.com/AeroNotix/k8s-event
 
 go 1.14
 
 require (
 	github.com/Azure/azure-event-hubs-go/v2 v2.0.3
 	github.com/Shopify/sarama v1.23.1
+	github.com/ashwanthkumar/slack-go-webhook v0.0.0-20200209025033-430dd4e66960
 	github.com/aws/aws-sdk-go v1.23.2
 	github.com/crewjam/rfc5424 v0.0.0-20180723152949-c25bdd3a0ba2
 	github.com/eapache/channels v1.1.0
@@ -14,6 +15,7 @@ require (
 	github.com/json-iterator/go v1.1.7
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/nytlabs/gojsonexplode v0.0.0-20160201065013-0f3fe6bb573f
+	github.com/parnurzeal/gorequest v0.2.16 // indirect
 	github.com/prometheus/client_golang v1.1.0
 	github.com/rockset/rockset-go-client v0.6.0
 	github.com/sethgrid/pester v0.0.0-20190127155807-68a33a018ad0
@@ -23,4 +25,5 @@ require (
 	k8s.io/apimachinery v0.0.0-20190814100815-533d101be9a6
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/utils v0.0.0-20190809000727-6c36bc71fc4a // indirect
+	moul.io/http2curl v1.0.0 // indirect
 )
