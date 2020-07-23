@@ -24,7 +24,7 @@ Example Configuration
 		{
 			"handles": "oomkill",
 			"type": "slack",
-            "templatePath": "/etc/k8s-event-monitoring/slack.tpl"
+			"templatePath": "/etc/k8s-event-monitoring/slack.tpl"
 		},
 		{
 			"handles": "healthchecks",
