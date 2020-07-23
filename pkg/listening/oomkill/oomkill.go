@@ -1,4 +1,4 @@
-package listener
+package oomkill
 
 import (
 	"bytes"
@@ -6,17 +6,17 @@ import (
 	"io"
 	"log"
 	"os"
-	"text/template"
 
-	"github.com/ashwanthkumar/slack-go-webhook"
-	"github.com/golang/glog"
+	"github.com/AeroNotix/k8s-event/pkg/alerting"
 	v1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	coreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
+
+const OOMKILL = "OOMKilled"
 
 type PodEventHandler struct {
 	// kubeclient is the main kubernetes interface
@@ -25,20 +25,13 @@ type PodEventHandler struct {
 	eLister corelisters.PodLister
 	// returns true if the event store has been synced
 	eListerSynched cache.InformerSynced
+	// The alerter we send events to
+	alerter alerting.Alerter
 }
 
 type ContainerStatusMap map[string]v1.ContainerStatus
 
-type ContainerRestartMessage struct {
-	ContainerName string
-	ClusterName   string
-	PodName       string
-	Namespace     string
-	Reason        string
-	LastLogs      string
-}
-
-func (peh PodEventHandler) addEvent(obj interface{}) {
+func (peh PodEventHandler) AddEvent(obj interface{}) {
 	// We don't need to do anything with this.
 }
 
@@ -50,25 +43,11 @@ func containerStatusesToMap(cs []v1.ContainerStatus) ContainerStatusMap {
 	return csMap
 }
 
-// SendMessage ... sends a message to slack?
-func SendMessage(webhookURL, channel, message string) {
-	payload := slack.Payload{
-		Text:      message,
-		Username:  "K8sEventMonitoring",
-		Channel:   channel,
-		IconEmoji: ":skull_and_crossbones:",
-	}
-	err := slack.Send(webhookURL, "", payload)
-	if len(err) > 0 {
-		log.Printf("error: %s\n", err)
-	}
-}
-
-func findRestartedContainers(csmOld, csmNew ContainerStatusMap) []v1.ContainerStatus {
+func findOOMKilledContainers(csmOld, csmNew ContainerStatusMap) []v1.ContainerStatus {
 	var restartedContainers []v1.ContainerStatus
 	for _, csOld := range csmOld {
 		csNew, ok := csmNew[csOld.Name]
-		if ok && csNew.RestartCount > csOld.RestartCount {
+		if ok && csNew.RestartCount > csOld.RestartCount && csNew.LastTerminationState.Terminated.Reason == OOMKILL {
 			restartedContainers = append(restartedContainers, csNew)
 		}
 	}
@@ -99,42 +78,34 @@ func (peh PodEventHandler) getPreviousPodLogs(pod *v1.Pod, containerName string)
 }
 
 func (peh PodEventHandler) formatPodRestartMessage(pod *v1.Pod, cs v1.ContainerStatus) error {
-	podRestartTemplate := `
-Container {{.PodName}}/{{.ContainerName}} restarted in {{.ClusterName}}/{{.Namespace}}
-* Reason: {{.Reason}}
-* Logs:` + "\n```{{.LastLogs}}```"
-
-	tmpl, err := template.New("restartTemplate").Parse(podRestartTemplate)
-	if err != nil {
-		return err
-	}
+	// v1.ObjectMeta.ClusterName isn't set properly in kubernetes:
+	// https://godoc.org/k8s.io/apimachinery/pkg/apis/meta/v1#ObjectMeta,
+	// because this runs in each cluster, we can do this:
+	clusterName := os.Getenv("CLUSTER_NAME")
 	previousLogs, err := peh.getPreviousPodLogs(pod, cs.Name)
 	if err != nil {
 		return err
 	}
-	crm := ContainerRestartMessage{
+	cre := alerting.ContainerRestartEvent{
 		ContainerName: cs.Name,
-		ClusterName:   pod.ClusterName,
+		ClusterName:   clusterName,
 		PodName:       pod.Name,
 		Namespace:     pod.Namespace,
 		Reason:        cs.LastTerminationState.Terminated.Reason,
 		LastLogs:      string(previousLogs),
 	}
-	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, crm)
-	if err != nil {
-		return err
-	}
-	SendMessage(os.Getenv("KW_SLACKWH_URI"), os.Getenv("KW_SLACKWH_CHANNEL"), buf.String())
-	return nil
+	return peh.alerter.Alert(cre)
 }
 
-func (peh PodEventHandler) updateEvent(objOld interface{}, objNew interface{}) {
-	eOld := objOld.(*v1.Pod)
-	eNew := objNew.(*v1.Pod)
+func (peh PodEventHandler) UpdateEvent(objOld interface{}, objNew interface{}) {
+	eOld, ok0 := objOld.(*v1.Pod)
+	eNew, ok1 := objNew.(*v1.Pod)
+	if !ok0 || !ok1 {
+		return
+	}
 	containerStatusesOld := containerStatusesToMap(eOld.Status.ContainerStatuses)
 	containerStatusesNew := containerStatusesToMap(eNew.Status.ContainerStatuses)
-	restartedContainers := findRestartedContainers(containerStatusesOld, containerStatusesNew)
+	restartedContainers := findOOMKilledContainers(containerStatusesOld, containerStatusesNew)
 	for _, restartedContainer := range restartedContainers {
 		err := peh.formatPodRestartMessage(eNew, restartedContainer)
 		if err != nil {
@@ -144,30 +115,27 @@ func (peh PodEventHandler) updateEvent(objOld interface{}, objNew interface{}) {
 	}
 }
 
-func (peh PodEventHandler) deleteEvent(obj interface{}) {
+func (peh PodEventHandler) DeleteEvent(obj interface{}) {
 	// We don't need to do anything with this.
 }
 
-func NewPodEventHandler(kubeClient kubernetes.Interface, eventsInformer coreinformers.PodInformer) *PodEventHandler {
+func New(kubeClient kubernetes.Interface, informerFactory informers.SharedInformerFactory, alerter alerting.Alerter) *PodEventHandler {
+	podsInformer := informerFactory.Core().V1().Pods()
 	peh := &PodEventHandler{
 		kubeClient: kubeClient,
 	}
-	eventsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    peh.addEvent,
-		UpdateFunc: peh.updateEvent,
-		DeleteFunc: peh.deleteEvent,
+	podsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    peh.AddEvent,
+		UpdateFunc: peh.UpdateEvent,
+		DeleteFunc: peh.DeleteEvent,
 	})
-	peh.eLister = eventsInformer.Lister()
-	peh.eListerSynched = eventsInformer.Informer().HasSynced
+	peh.eLister = podsInformer.Lister()
+	peh.eListerSynched = podsInformer.Informer().HasSynced
 	return peh
 }
 
 func (er *PodEventHandler) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
-	defer glog.Infof("Shutting down EventRouter")
-
-	glog.Infof("Starting EventRouter")
-
 	if !cache.WaitForCacheSync(stopCh, er.eListerSynched) {
 		utilruntime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
 		return

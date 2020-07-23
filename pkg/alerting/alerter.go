@@ -1,16 +1,25 @@
 package alerting
 
 import (
+	"io/ioutil"
 	"log"
 
-	"github.com/ashwanthkumar/slack-go-webhook"
 	"github.com/spf13/viper"
 )
 
 // Alerter represents something that can trigger an alert to an
 // external service. For example, to slack, or opsgenie.
 type Alerter interface {
-	Alert(message string) error
+	Alert(ContainerRestartEvent) error
+}
+
+type ContainerRestartEvent struct {
+	ContainerName string
+	ClusterName   string
+	PodName       string
+	Namespace     string
+	Reason        string
+	LastLogs      string
 }
 
 // Registry holds all the available alerters to be used by deadman
@@ -30,11 +39,10 @@ func NewRegistry() Registry {
 func alerterFromRawConfig(raw map[string]string) Alerter {
 	switch raw["type"] {
 	case "slack":
-		return NewSlackAlerter(raw["webhook"], raw["channel"])
-	case "log":
+		return NewSlackAlerter(raw["webhook"], raw["channel"], raw["templatePath"])
+	default:
 		return NewLogAlerter()
 	}
-	panic("unknown alerter config!")
 }
 
 // NewRegistryFromConfig will create a Registry from a viper/json
@@ -72,39 +80,26 @@ func (r *Registry) GetAlerter(name string) Alerter {
 type SlackAlerter struct {
 	webhookURL string
 	channel    string
+	template   []byte
 }
 
 // NewSlackAlerter creates a slack alerter with the correct webhooks,
 // channel and returns it as the Alerter interface.
-func NewSlackAlerter(webhookURL, channel string) Alerter {
+func NewSlackAlerter(webhookURL, channel, templatePath string) Alerter {
+	b, err := ioutil.ReadFile(templatePath)
+	if err != nil {
+		panic(err)
+	}
 	return SlackAlerter{
 		webhookURL: webhookURL,
 		channel:    channel,
+		template:   b,
 	}
 }
 
-// Alert implements the Alerter interface.q
-func (a SlackAlerter) Alert(message string) error {
-	SendMessage(
-		a.webhookURL,
-		a.channel,
-		message,
-	)
+// Alert implements the Alerter interface.
+func (a SlackAlerter) Alert(cre ContainerRestartEvent) error {
 	return nil
-}
-
-// SendMessage ... sends a message to slack?
-func SendMessage(webhookURL, channel, message string) {
-	payload := slack.Payload{
-		Text:      message,
-		Username:  "DeadMansSwitch",
-		Channel:   channel,
-		IconEmoji: ":skull_and_crossbones:",
-	}
-	err := slack.Send(webhookURL, "", payload)
-	if len(err) > 0 {
-		log.Printf("error: %s\n", err)
-	}
 }
 
 // LogAlerter is a dead simple alerter which simply logs to console.
@@ -117,7 +112,7 @@ func NewLogAlerter() Alerter {
 }
 
 // Alert implements the Alerter interface for LogAlerter.
-func (la LogAlerter) Alert(message string) error {
-	log.Println(message)
+func (la LogAlerter) Alert(cre ContainerRestartEvent) error {
+	log.Println(cre)
 	return nil
 }

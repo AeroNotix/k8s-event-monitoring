@@ -14,11 +14,13 @@ require (
 	github.com/influxdata/influxdb v1.7.7
 	github.com/json-iterator/go v1.1.7
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/nytlabs/gojsonexplode v0.0.0-20160201065013-0f3fe6bb573f
 	github.com/parnurzeal/gorequest v0.2.16 // indirect
 	github.com/prometheus/client_golang v1.1.0
 	github.com/rockset/rockset-go-client v0.6.0
 	github.com/sethgrid/pester v0.0.0-20190127155807-68a33a018ad0
+	github.com/spf13/cobra v1.0.0
 	github.com/spf13/viper v1.4.0
 	gopkg.in/jcmturner/goidentity.v3 v3.0.0 // indirect
 	k8s.io/api v0.0.0-20190814101207-0772a1bdf941
