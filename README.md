@@ -44,6 +44,15 @@ counts is difficult. Creating alerts on OOMKilled pods is also very
 tricky, and may lead to no alerts:
 https://github.com/kubernetes/kube-state-metrics/pull/535
 
+Secondly, often times you want to know _what exactly happened_ when an
+alert fires off. Prometheus alerts only really tell you that
+_something_ happened. Not _what_.
+
+Therefore with this application, since it sits inside the kubernetes
+cluster - it has access to everything regarding the pod. When slack
+alerts kick off it emits an alert _containing the last logs_. Which
+really aids in debugging what's going on.
+
 Initially I did start off using the various kube-state-metrics to
 achieve alerts based on particular events but I found that the above
 issue with OOMKilled pods coupled with spurious alerts when either
