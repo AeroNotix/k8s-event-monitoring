@@ -44,7 +44,7 @@ func (s Start) Run() {
 	stop := listening.SigHandler()
 	wg := listening.RunAll([]listening.Listener{
 		oomkill.New(clientset, sharedInformerFactory, alerterRegistry.GetAlerter("oomkill")),
-		healthchecks.New(clientset, sharedInformerFactory, alerterRegistry.GetAlerter("oomkill")),
+		healthchecks.New(clientset, sharedInformerFactory, alerterRegistry.GetAlerter("healthchecks")),
 	})
 	glog.Infof("Starting shared Informer(s)")
 	sharedInformerFactory.Start(stop)
