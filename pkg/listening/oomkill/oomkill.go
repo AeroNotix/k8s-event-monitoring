@@ -123,6 +123,7 @@ func New(kubeClient kubernetes.Interface, informerFactory informers.SharedInform
 	podsInformer := informerFactory.Core().V1().Pods()
 	peh := &PodEventHandler{
 		kubeClient: kubeClient,
+		alerter:    alerter,
 	}
 	podsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    peh.AddEvent,

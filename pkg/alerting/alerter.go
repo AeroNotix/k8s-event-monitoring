@@ -55,7 +55,7 @@ func NewRegistryFromConfig(viper *viper.Viper) Registry {
 			for k, v := range rawsw.(map[string]interface{}) {
 				sw[k] = v.(string)
 			}
-			r.AddAlerter(sw["name"], alerterFromRawConfig(sw))
+			r.AddAlerter(sw["handles"], alerterFromRawConfig(sw))
 		}
 		return r
 	}

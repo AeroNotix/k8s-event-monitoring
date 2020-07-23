@@ -49,6 +49,7 @@ func New(kubeClient kubernetes.Interface, informerFactory informers.SharedInform
 	eventsInformer := informerFactory.Core().V1().Events()
 	lfh := &LivenessFailedHandler{
 		kubeClient: kubeClient,
+		alerter:    alerter,
 	}
 	eventsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    lfh.AddEvent,
